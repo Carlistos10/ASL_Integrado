@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detector de Lenguaje de Signos (ASL)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .camera-view {
+            transform: scaleX(-1);
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center py-8">
+
+    <header class="text-center mb-8 px-4">
+        <h1 class="text-4xl font-bold text-blue-400 mb-2">ASL Detector AI</h1>
+        <p class="text-slate-400">Detector automático de lenguaje de signos</p>
+    </header>
+
+    <main class="w-full max-w-4xl bg-slate-800 rounded-2xl shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-2">
+
+        <!-- Panel Izquierdo: Visualización -->
+        <div
+            class="p-6 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-slate-700 bg-black relative">
+            <div
+                class="relative w-full aspect-square bg-slate-900 rounded-lg overflow-hidden border-2 border-slate-700 flex items-center justify-center group">
+                <video id="webcam" autoplay playsinline
+                    class="camera-view absolute inset-0 w-full h-full object-cover hidden"></video>
+                <img id="previewImage" class="absolute inset-0 w-full h-full object-contain hidden" alt="Vista previa">
+                <div id="placeholder" class="text-slate-500 flex flex-col items-center">
+                    <i data-lucide="camera" class="w-16 h-16 mb-2 opacity-50"></i>
+                    <p>Cámara apagada</p>
+                </div>
+                <div id="loadingOverlay"
+                    class="absolute inset-0 bg-black/80 flex items-center justify-center hidden z-20">
+                    <div class="flex flex-col items-center">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-2"></div>
+                        <p id="loadingText" class="text-blue-400 text-sm font-mono">Iniciando...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-4 mt-6 w-full justify-center">
+                <button onclick="toggleCamera()"
+                    class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition font-medium">
+                    <i data-lucide="video"></i> Cámara
+                </button>
+                <label
+                    class="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg transition font-medium cursor-pointer">
+                    <i data-lucide="upload"></i> Imagen
+                    <input type="file" id="imageUpload" accept="image/*" class="hidden"
+                        onchange="handleImageUpload(event)">
+                </label>
+            </div>
+        </div>
+
+        <!-- Panel Derecho: Controles y Resultado -->
+        <div class="p-6 flex flex-col justify-between">
+
+            <!-- Estado del Modelo -->
+            <div class="bg-slate-700/50 p-4 rounded-xl mb-6 border border-slate-600">
+                <h2 class="text-lg font-semibold mb-3 flex items-center gap-2 text-blue-300">
+                    <i data-lucide="cpu"></i> Estado del Sistema
+                </h2>
+
+                <div id="modelStatus" class="text-sm font-mono text-yellow-400 flex flex-col gap-2">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
+                        <span>Iniciando sistema...</span>
+                    </div>
+                </div>
+
+                <!-- Fallback: Carga Manual (Visible si falla auto-carga) -->
+                <div id="manualUploadSection" class="mt-4 pt-4 border-t border-slate-600 hidden">
+                    <div class="bg-red-500/10 border border-red-500/20 rounded p-2 mb-3">
+                        <p class="text-xs text-red-300 flex items-center gap-2">
+                            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                            No se pudo leer la carpeta automáticamente (¿Estás en local?).
+                        </p>
+                    </div>
+                    <p class="text-xs text-slate-300 mb-2">Por favor, selecciona <strong>model.json</strong> y los
+                        archivos <strong>.bin</strong> manualmente:</p>
+                    <input type="file" id="modelUpload" multiple accept=".json,.bin"
+                        class="block w-full text-xs text-slate-300 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer transition" />
+                </div>
+            </div>
+
+            <!-- Predicción -->
+            <div class="flex-grow flex flex-col items-center justify-center py-6">
+                <h3 class="text-slate-400 uppercase tracking-wider text-sm font-bold mb-2">Predicción</h3>
+                <div class="relative">
+                    <div id="predictionResult"
+                        class="text-9xl font-black text-white drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]">--</div>
+                </div>
+                <div id="confidenceScore" class="mt-2 text-emerald-400 font-mono text-lg opacity-0 transition-opacity">
+                    Confianza: 0%</div>
+            </div>
+
+            <button onclick="predict()" id="predictBtn" disabled
+                class="w-full py-4 bg-slate-600 text-slate-400 rounded-xl font-bold text-lg transition-all cursor-not-allowed">
+                Cargando IA...
+            </button>
+
+            <div class="mt-4 flex items-center gap-2 text-xs text-slate-500">
+                <input type="checkbox" id="demoMode" class="rounded bg-slate-700 border-slate-600"
+                    onchange="toggleDemoMode()">
+                <label for="demoMode">Modo Demo</label>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        lucide.createIcons();
+
+        // CONFIGURACIÓN
+        const IMG_SIZE = 64;
+        const CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'del', 'nothing', 'space'];
+        const AUTO_MODEL_PATH = 'web_model/model.json'; // Ruta automática
+
+        let model = null;
+        let isWebcamActive = false;
+        let webcamStream = null;
+        let animationId = null;
+
+        const videoEl = document.getElementById('webcam');
+        const imgEl = document.getElementById('previewImage');
+        const placeholderEl = document.getElementById('placeholder');
+        const resultEl = document.getElementById('predictionResult');
+        const confidenceEl = document.getElementById('confidenceScore');
+        const statusEl = document.getElementById('modelStatus');
+        const predictBtn = document.getElementById('predictBtn');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const manualUploadSection = document.getElementById('manualUploadSection');
+
+        // --- INICIO AUTOMÁTICO ---
+        window.addEventListener('DOMContentLoaded', async () => {
+            // Detectar protocolo file://
+            if (window.location.protocol === 'file:') {
+                console.warn("Ejecutando en local (file://). La carga automática será bloqueada por CORS.");
+                showManualUpload("Modo local detectado. Sube el modelo manualmente.");
+            } else {
+                await tryLoadAutoModel();
+            }
+        });
+
+        // 1. Intentar cargar modelo automáticamente desde carpeta
+        async function tryLoadAutoModel() {
+            statusEl.innerHTML = `
+                <div class="flex items-center gap-2 text-yellow-400">
+                    <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span> 
+                    <span>Buscando modelo en carpeta <code>web_model/</code>...</span>
+                </div>`;
+
+            try {
+                // Fetch del JSON primero para poder parchearlo
+                const response = await fetch(AUTO_MODEL_PATH);
+                if (!response.ok) throw new Error(`Archivo no encontrado (${response.status})`);
+
+                const jsonContent = await response.text();
+                const modelData = JSON.parse(jsonContent);
+
+                // APLICAR PARCHES
+                patchModelArchitecture(modelData);
+
+                // AJUSTAR RUTAS DE PESOS (Crucial para carga automática)
+                if (modelData.weightsManifest) {
+                    const basePath = window.location.href.substring(0, window.location.href.lastIndexOf('/')) + '/web_model/';
+                    modelData.weightsManifest.forEach(manifest => {
+                        manifest.paths = manifest.paths.map(p => basePath + p);
+                    });
+                }
+
+                await loadModelFromData(modelData);
+
+                statusEl.innerHTML = `
+                    <div class="flex items-center gap-2 text-emerald-400">
+                        <i data-lucide="check-circle" class="w-4 h-4"></i>
+                        <span>Modelo integrado cargado correctamente.</span>
+                    </div>`;
+                lucide.createIcons();
+
+            } catch (error) {
+                console.warn("Fallo carga automática:", error);
+                showManualUpload("No se encontró la carpeta o hubo un error de acceso.");
+            }
+        }
+
+        function showManualUpload(msg) {
+            statusEl.innerHTML = `
+                <div class="flex items-center gap-2 text-slate-400">
+                    <i data-lucide="info" class="w-4 h-4"></i>
+                    <span>Esperando modelo manual...</span>
+                </div>`;
+            manualUploadSection.classList.remove('hidden');
+            lucide.createIcons();
+
+            // Habilitar botón predict aunque sea para mostrar mensaje
+            predictBtn.innerText = "Sube el modelo para empezar";
+        }
+
+        // 2. Lógica común para cargar desde datos JSON
+        async function loadModelFromData(modelData) {
+            // Crear Blob para el JSON parcheado
+            const blob = new Blob([JSON.stringify(modelData)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            // Cargar modelo en TFJS
+            model = await tf.loadLayersModel(url);
+
+            // Activar UI
+            predictBtn.disabled = false;
+            predictBtn.classList.remove('bg-slate-600', 'text-slate-400', 'cursor-not-allowed');
+            predictBtn.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-500');
+            predictBtn.innerText = "DETECTAR SIGNO";
+
+            if (isWebcamActive) predictLoop();
+            console.log("Modelo listo.");
+        }
+
+        // 3. Función de Parcheo (BatchShape y Weight Scoping)
+        function patchModelArchitecture(modelData) {
+            console.log("Aplicando parches de compatibilidad...");
+
+            // Parche A: batchInputShape
+            function fixLayers(layers) {
+                if (!layers) return;
+                layers.forEach(layer => {
+                    if (layer.class_name === 'InputLayer' && layer.config) {
+                        if (layer.config.batch_shape && !layer.config.batchInputShape) {
+                            layer.config.batchInputShape = layer.config.batch_shape;
+                        }
+                    }
+                });
+            }
+
+            if (modelData.modelTopology?.model_config?.config?.layers) {
+                fixLayers(modelData.modelTopology.model_config.config.layers);
+            }
+
+            // Parche B: Nombres de pesos (Eliminar prefijos 'sequential/')
+            if (modelData.weightsManifest && modelData.weightsManifest.length > 0) {
+                const modelName = modelData.modelTopology?.model_config?.config?.name;
+                if (modelName) {
+                    const prefix = modelName + '/';
+                    modelData.weightsManifest.forEach(manifest => {
+                        manifest.weights.forEach(weight => {
+                            if (weight.name.startsWith(prefix)) {
+                                weight.name = weight.name.substring(prefix.length);
+                            }
+                        });
+                    });
+                }
+            }
+        }
+
+        // --- Carga Manual (Fallback) ---
+        document.getElementById('modelUpload').addEventListener('change', async (event) => {
+            const rawFiles = [...event.target.files];
+            if (rawFiles.length === 0) return;
+
+            const jsonFile = rawFiles.find(f => f.name.endsWith('.json'));
+            const binFiles = rawFiles.filter(f => f.name.endsWith('.bin'));
+
+            if (!jsonFile || binFiles.length === 0) {
+                alert("Faltan archivos (json o bin).");
+                return;
+            }
+
+            try {
+                const jsonContent = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsText(jsonFile);
+                });
+
+                const modelData = JSON.parse(jsonContent);
+                patchModelArchitecture(modelData);
+
+                // Para carga manual, usamos tf.io.browserFiles pero con el JSON parcheado
+                // Creamos un archivo virtual
+                const patchedBlob = new Blob([JSON.stringify(modelData)], { type: 'application/json' });
+                const patchedFile = new File([patchedBlob], jsonFile.name, { type: 'application/json' });
+
+                // Orden: JSON primero
+                const uploadFiles = [patchedFile, ...binFiles];
+
+                model = await tf.loadLayersModel(tf.io.browserFiles(uploadFiles));
+
+                statusEl.innerHTML = `<span class="text-emerald-400 font-bold">¡Modelo manual cargado!</span>`;
+                manualUploadSection.classList.add('hidden');
+
+                predictBtn.disabled = false;
+                predictBtn.classList.remove('bg-slate-600', 'text-slate-400', 'cursor-not-allowed');
+                predictBtn.classList.add('bg-blue-600', 'text-white');
+                predictBtn.innerText = "DETECTAR SIGNO";
+                if (isWebcamActive) predictLoop();
+
+            } catch (e) {
+                console.error(e);
+                alert("Error cargando modelo manual: " + e.message);
+            }
+        });
+
+        // --- Funciones de UI (Cámara, Predicción) ---
+        async function toggleCamera() {
+            if (isWebcamActive) stopWebcam();
+            else await startWebcam();
+        }
+
+        async function startWebcam() {
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                videoEl.srcObject = webcamStream;
+                videoEl.classList.remove('hidden');
+                placeholderEl.classList.add('hidden');
+                imgEl.classList.add('hidden');
+                isWebcamActive = true;
+                if (model || document.getElementById('demoMode').checked) predictLoop();
+            } catch (err) {
+                alert("Error cámara: " + err.message);
+            }
+        }
+
+        function stopWebcam() {
+            if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
+            videoEl.classList.add('hidden');
+            placeholderEl.classList.remove('hidden');
+            isWebcamActive = false;
+            cancelAnimationFrame(animationId);
+        }
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                stopWebcam();
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imgEl.src = e.target.result;
+                    imgEl.classList.remove('hidden');
+                    placeholderEl.classList.add('hidden');
+                    resultEl.innerText = "--";
+                    confidenceEl.style.opacity = "0";
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function predict() {
+            const isDemo = document.getElementById('demoMode').checked;
+            let imageSource = null;
+
+            if (isWebcamActive && !videoEl.paused) imageSource = videoEl;
+            else if (!imgEl.classList.contains('hidden') && imgEl.src) imageSource = imgEl;
+            else {
+                alert("Enciende la cámara o sube imagen.");
+                return;
+            }
+
+            if (isDemo) {
+                const randomChar = CLASSES[Math.floor(Math.random() * CLASSES.length)];
+                updateUI(randomChar, 0.95);
+                return;
+            }
+
+            if (!model) return;
+
+            tf.tidy(() => {
+                let tensor = tf.browser.fromPixels(imageSource);
+                tensor = tf.image.resizeBilinear(tensor, [IMG_SIZE, IMG_SIZE]);
+                tensor = tensor.div(255.0);
+                tensor = tensor.expandDims(0);
+                const predictions = model.predict(tensor);
+                const data = predictions.dataSync();
+                const maxIndex = predictions.argMax(-1).dataSync()[0];
+                updateUI(CLASSES[maxIndex] || "?", data[maxIndex]);
+            });
+        }
+
+        function updateUI(label, confidence) {
+            resultEl.innerText = label;
+            confidenceEl.innerText = `Confianza: ${(confidence * 100).toFixed(1)}%`;
+            confidenceEl.style.opacity = "1";
+            confidenceEl.className = confidence > 0.85 ? "mt-2 font-mono text-lg text-emerald-400" : "mt-2 font-mono text-lg text-yellow-400";
+        }
+
+        function predictLoop() {
+            if (isWebcamActive) {
+                predict();
+                animationId = requestAnimationFrame(predictLoop);
+            }
+        }
+
+        function toggleDemoMode() {
+            const isDemo = document.getElementById('demoMode').checked;
+            if (isDemo) {
+                predictBtn.disabled = false;
+                predictBtn.innerText = "SIMULAR";
+                predictBtn.classList.add('bg-purple-600', 'text-white');
+            } else if (!model) {
+                predictBtn.disabled = true;
+                predictBtn.innerText = "Cargando IA...";
+                predictBtn.classList.remove('bg-purple-600', 'text-white');
+            } else {
+                predictBtn.innerText = "DETECTAR SIGNO";
+                predictBtn.classList.remove('bg-purple-600');
+            }
+        }
+    </script>
+</body>
+
+</html>
