@@ -17,12 +17,13 @@
             transform: scaleX(-1);
         }
 
-        /* Estilos para la consola de depuración */
         .debug-console {
             font-family: 'Courier New', Courier, monospace;
-            font-size: 0.75rem;
-            max-height: 150px;
+            font-size: 0.70rem;
+            max-height: 200px;
             overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
         }
     </style>
 </head>
@@ -87,21 +88,19 @@
                     </div>
                 </div>
 
-                <!-- Consola de Depuración (Visible en caso de error) -->
+                <!-- Consola de Depuración -->
                 <div id="debugSection" class="mt-4 pt-4 border-t border-slate-600 hidden">
-                    <p class="text-xs text-slate-400 mb-1 font-bold">Registro de Intentos:</p>
+                    <p class="text-xs text-slate-400 mb-1 font-bold">Registro de Diagnóstico:</p>
                     <div id="debugLog"
-                        class="debug-console bg-black/50 p-2 rounded text-slate-300 border border-slate-700">
-                        <!-- Logs irán aquí -->
-                    </div>
+                        class="debug-console bg-black/50 p-2 rounded text-slate-300 border border-slate-700"></div>
                 </div>
 
                 <!-- Fallback: Carga Manual -->
                 <div id="manualUploadSection" class="mt-4 pt-4 border-t border-slate-600 hidden">
                     <p class="text-xs text-red-300 mb-2 font-bold flex items-center gap-2">
-                        <i data-lucide="alert-triangle" class="w-4 h-4"></i> Carga automática fallida
+                        <i data-lucide="alert-triangle" class="w-4 h-4"></i> Carga fallida
                     </p>
-                    <p class="text-xs text-slate-300 mb-2">Sube los archivos manualmente para probar:</p>
+                    <p class="text-xs text-slate-300 mb-2">Sube los archivos manualmente:</p>
                     <input type="file" id="modelUpload" multiple accept=".json,.bin"
                         class="block w-full text-xs text-slate-300 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer transition" />
                 </div>
@@ -138,13 +137,11 @@
         const IMG_SIZE = 64;
         const CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'del', 'nothing', 'space'];
 
-        // LISTA DE RUTAS A PROBAR
         const POTENTIAL_PATHS = [
-            'web_model/model.json',       // Estándar
-            'model.json',                 // Raíz
-            'web_model/model.json',       // Minúsculas forzadas
-            'Web_Model/model.json',       // Mayúsculas
-            'assets/model.json'
+            'web_model/model.json',
+            'model.json',
+            'web_model/model.json',
+            'Web_Model/model.json'
         ];
 
         let model = null;
@@ -176,21 +173,19 @@
         // --- INICIO AUTOMÁTICO ---
         window.addEventListener('DOMContentLoaded', async () => {
             if (window.location.protocol === 'file:') {
-                logDebug("ERROR: Protocolo file:// detectado.", 'error');
-                logDebug("La carga automática está bloqueada en local.", 'error');
+                logDebug("ERROR: Protocolo file:// detectado. Carga bloqueada.", 'error');
                 showManualUpload();
             } else {
                 await findAndLoadModel();
             }
         });
 
-        // ESTRATEGIA DE BÚSQUEDA MULTI-RUTA CON DIAGNÓSTICO
+        // ESTRATEGIA: Descarga Híbrida (Download & Inject)
         async function findAndLoadModel() {
             let loaded = false;
             debugSection.classList.remove('hidden');
-            logDebug("Iniciando búsqueda de modelo...");
+            logDebug("Iniciando búsqueda...", 'info');
 
-            // Añadimos timestamp para evitar caché del navegador
             const cacheBuster = `?t=${Date.now()}`;
 
             for (const path of POTENTIAL_PATHS) {
@@ -198,54 +193,64 @@
                     const modelUrl = new URL(path, window.location.href).href;
                     logDebug(`Probando: .../${path}`, 'info');
 
-                    // 1. Verificamos JSON
-                    const response = await fetch(modelUrl + cacheBuster, { method: 'GET' });
-
+                    // 1. Descargar JSON
+                    const response = await fetch(modelUrl + cacheBuster);
                     if (!response.ok) {
-                        logDebug(`❌ JSON Falló (${response.status})`, 'error');
+                        logDebug(`❌ JSON 404`, 'error');
                         continue;
                     }
 
-                    logDebug(`✅ JSON Encontrado. Analizando...`, 'success');
-
-                    // 2. Cargamos el JSON
                     const jsonContent = await response.text();
                     let modelData;
-                    try {
-                        modelData = JSON.parse(jsonContent);
-                    } catch (e) {
-                        logDebug(`❌ JSON corrupto: ${e.message}`, 'error');
-                        continue;
-                    }
+                    try { modelData = JSON.parse(jsonContent); }
+                    catch (e) { logDebug(`❌ JSON Inválido`, 'error'); continue; }
 
-                    // 3. Verificamos el .BIN asociado
+                    logDebug(`✅ JSON descargado.`, 'success');
+
+                    // 2. Descargar BIN(s) Manualmente
+                    const basePath = modelUrl.substring(0, modelUrl.lastIndexOf('/') + 1);
+                    const binFiles = [];
+
                     if (modelData.weightsManifest) {
-                        const basePath = modelUrl.substring(0, modelUrl.lastIndexOf('/') + 1);
-                        const binName = modelData.weightsManifest[0].paths[0];
-                        const binUrl = basePath + binName;
+                        logDebug(`Descargando binarios...`, 'info');
+                        const manifest = modelData.weightsManifest;
 
-                        logDebug(`Verificando BIN: .../${binName}`, 'info');
+                        // Recorremos todos los manifiestos y paths
+                        for (const group of manifest) {
+                            for (const p of group.paths) {
+                                // Limpiar path relativo
+                                const cleanPath = p.startsWith('./') ? p.slice(2) : p;
+                                const binUrl = basePath + cleanPath;
 
-                        // Intentamos ver si el bin existe
-                        const binResponse = await fetch(binUrl + cacheBuster, { method: 'HEAD' });
-                        if (!binResponse.ok) {
-                            logDebug(`❌ Archivo BIN no encontrado (${binResponse.status})`, 'error');
-                            logDebug(`El JSON apunta a un archivo que no está.`, 'error');
-                            continue;
+                                logDebug(`Fetching: ${cleanPath}`, 'info');
+                                const binResp = await fetch(binUrl + cacheBuster);
+
+                                if (!binResp.ok) throw new Error(`Binario no encontrado: ${cleanPath}`);
+
+                                const blob = await binResp.blob();
+                                // Crear objeto File en memoria
+                                const file = new File([blob], cleanPath, { type: 'application/octet-stream' });
+                                binFiles.push(file);
+                            }
                         }
-                        logDebug(`✅ Archivo BIN confirmado.`, 'success');
-
-                        // Si llegamos aquí, parcheamos rutas para carga
-                        modelData.weightsManifest.forEach(manifest => {
-                            manifest.paths = manifest.paths.map(p => basePath + p);
-                        });
                     }
 
-                    // 4. Parchear Arquitectura (InputShape Bug)
-                    patchModelArchitecture(modelData);
+                    logDebug(`✅ Binarios descargados en memoria.`, 'success');
 
-                    // 5. Cargar
-                    await loadModelFromData(modelData);
+                    // 3. Parchear Arquitectura
+                    patchModelArchitecture(modelData);
+                    logDebug(`🔧 Parches aplicados.`, 'info');
+
+                    // 4. Crear File para el JSON parcheado
+                    const jsonFile = new File([JSON.stringify(modelData)], 'model.json', { type: 'application/json' });
+
+                    // 5. Cargar usando IO BrowserFiles (Todo en memoria)
+                    // Importante: El JSON debe ir primero
+                    const filesToLoad = [jsonFile, ...binFiles];
+
+                    // Aseguramos que el cargador de TF use estos archivos
+                    model = await tf.loadLayersModel(tf.io.browserFiles(filesToLoad));
+
                     loaded = true;
                     logDebug(`🎉 MODELO CARGADO EXITOSAMENTE`, 'success');
 
@@ -254,17 +259,24 @@
                         <i data-lucide="check-circle" class="w-4 h-4"></i>
                         <span>Modelo listo</span>
                     </div>`;
-                    lucide.createIcons();
 
-                    break; // Éxito, salir del bucle
+                    // Activar interfaz
+                    predictBtn.disabled = false;
+                    predictBtn.classList.remove('bg-slate-600', 'text-slate-400', 'cursor-not-allowed');
+                    predictBtn.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-500');
+                    predictBtn.innerText = "DETECTAR SIGNO";
+                    if (isWebcamActive) predictLoop();
+
+                    lucide.createIcons();
+                    break; // Salir del bucle
 
                 } catch (e) {
-                    logDebug(`❌ Error red/sistema: ${e.message}`, 'error');
+                    logDebug(`❌ Error en intento: ${e.message}`, 'error');
                 }
             }
 
             if (!loaded) {
-                logDebug("FATAL: No se pudo cargar ningún modelo.", 'error');
+                logDebug("FATAL: No se pudo cargar el modelo.", 'error');
                 showManualUpload();
             }
         }
@@ -280,22 +292,7 @@
             predictBtn.innerText = "Sube el modelo manualmente";
         }
 
-        // 2. Lógica común para cargar desde datos JSON
-        async function loadModelFromData(modelData) {
-            const blob = new Blob([JSON.stringify(modelData)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-
-            model = await tf.loadLayersModel(url);
-
-            predictBtn.disabled = false;
-            predictBtn.classList.remove('bg-slate-600', 'text-slate-400', 'cursor-not-allowed');
-            predictBtn.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-500');
-            predictBtn.innerText = "DETECTAR SIGNO";
-
-            if (isWebcamActive) predictLoop();
-        }
-
-        // 3. Función de Parcheo
+        // Función de Parcheo
         function patchModelArchitecture(modelData) {
             function fixLayers(layers) {
                 if (!layers) return;
@@ -303,7 +300,6 @@
                     if (layer.class_name === 'InputLayer' && layer.config) {
                         if (layer.config.batch_shape && !layer.config.batchInputShape) {
                             layer.config.batchInputShape = layer.config.batch_shape;
-                            logDebug("🔧 Parche aplicado: batchInputShape", 'info');
                         }
                     }
                 });
@@ -317,16 +313,13 @@
                 const modelName = modelData.modelTopology?.model_config?.config?.name;
                 if (modelName) {
                     const prefix = modelName + '/';
-                    let patchedCount = 0;
                     modelData.weightsManifest.forEach(manifest => {
                         manifest.weights.forEach(weight => {
                             if (weight.name.startsWith(prefix)) {
                                 weight.name = weight.name.substring(prefix.length);
-                                patchedCount++;
                             }
                         });
                     });
-                    if (patchedCount > 0) logDebug(`🔧 Parche aplicado: ${patchedCount} nombres de pesos corregidos`, 'info');
                 }
             }
         }
