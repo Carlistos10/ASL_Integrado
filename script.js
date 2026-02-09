@@ -1,7 +1,7 @@
 // ============================================================================
 // CONFIGURACIÓN GLOBAL
 // ============================================================================
-const IMG_SIZE = 64; // El modelo fue entrenado con 64x64
+const IMG_SIZE = 64; // imagenes de 64x64
 const CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'del', 'nothing', 'space'];
 const MODEL_PATH = 'web_model/model.json';
 
@@ -26,7 +26,6 @@ function logDebug(msg, type = 'info') {
 // INICIO
 // ============================================================================
 window.addEventListener('DOMContentLoaded', async () => {
-    // Protocolo file:// suele dar problemas de CORS, forzamos manual
     if (window.location.protocol === 'file:') {
         showManualUpload();
     } else {
@@ -88,7 +87,7 @@ async function findAndLoadModel() {
 
 // === FUNCIÓN CRÍTICA DE CORRECCIÓN ===
 function patchModelArchitecture(modelData) {
-    // A. Corregir batch_shape (tu error anterior)
+    // Corregir batch_shape
     const layers = modelData.modelTopology?.model_config?.config?.layers;
     if (layers) {
         layers.forEach(layer => {
@@ -101,9 +100,8 @@ function patchModelArchitecture(modelData) {
         });
     }
 
-    // B. Corregir Nombres de Pesos (tu error actual)
-    // El modelo espera 'conv2d/kernel' pero el archivo tiene 'sequential/conv2d/kernel'
-    const modelName = modelData.modelTopology?.model_config?.config?.name; // generalmente "sequential"
+    // Corregir Nombres de Pesos
+    const modelName = modelData.modelTopology?.model_config?.config?.name;
     if (modelName && modelData.weightsManifest) {
         const prefix = modelName + '/';
         console.log(`🔧 Parche: Buscando prefijo '${prefix}' en pesos...`);
@@ -112,7 +110,7 @@ function patchModelArchitecture(modelData) {
         modelData.weightsManifest.forEach(group => {
             group.weights.forEach(w => {
                 if (w.name.startsWith(prefix)) {
-                    w.name = w.name.slice(prefix.length); // Quitamos "sequential/"
+                    w.name = w.name.slice(prefix.length);
                     fixedCount++;
                 }
             });
@@ -122,55 +120,13 @@ function patchModelArchitecture(modelData) {
 }
 
 // ============================================================================
-// CARGA MANUAL
-// ============================================================================
-const manualInput = document.getElementById('modelUpload');
-if (manualInput) {
-    manualInput.addEventListener('change', async (event) => {
-        const rawFiles = [...event.target.files];
-        if (rawFiles.length === 0) return;
-
-        const jsonFile = rawFiles.find(f => f.name.endsWith('.json'));
-        const binFiles = rawFiles.filter(f => f.name.endsWith('.bin'));
-
-        if (!jsonFile || binFiles.length === 0) {
-            alert("Sube json y bin juntos.");
-            return;
-        }
-
-        try {
-            const jsonContent = await new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (e) => resolve(e.target.result);
-                reader.readAsText(jsonFile);
-            });
-
-            const modelData = JSON.parse(jsonContent);
-            patchModelArchitecture(modelData); // <--- Aplicar parche también aquí
-
-            const patchedFile = new File([JSON.stringify(modelData)], 'model.json', { type: 'application/json' });
-
-            model = await tf.loadLayersModel(tf.io.browserFiles([patchedFile, ...binFiles]));
-
-            logDebug("Carga manual exitosa", 'success');
-            manualUploadSection.classList.add('hidden');
-            updateStatusSuccess();
-
-        } catch (e) {
-            console.error(e);
-            alert("Error: " + e.message);
-        }
-    });
-}
-
-// ============================================================================
 // UI & PREDICT
 // ============================================================================
 function updateStatusSuccess() {
     statusEl.innerHTML = `
         <div class="flex items-center gap-2 text-emerald-400">
             <i data-lucide="check-circle" class="w-4 h-4"></i>
-            <span>Modelo listo (64x64 Grayscale)</span>
+            <span>Modelo listo</span>
         </div>`;
     predictBtn.disabled = false;
     predictBtn.classList.replace('bg-slate-600', 'bg-blue-600');
