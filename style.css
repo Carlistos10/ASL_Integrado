@@ -282,3 +282,23 @@ body.edu-mode .footer-authors span {
         font-size: 0.8rem;
     }
 }
+
+/* Estilos para el desplegable en Modo Educativo */
+body.edu-mode .edu-border {
+    border-top-color: rgba(44, 66, 91, 0.2) !important;
+}
+
+body.edu-mode .edu-text {
+    color: var(--texto-gris) !important;
+    font-weight: 600;
+}
+
+body.edu-mode .edu-select {
+    background-color: white !important;
+    color: var(--texto) !important;
+    border: 2px solid var(--borde) !important;
+    border-radius: 0.75rem !important;
+    padding: 0.6rem !important;
+    font-weight: 500;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}

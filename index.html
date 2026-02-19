@@ -49,7 +49,29 @@
                         onchange="handleImageUpload(event)">
                 </label>
             </div>
+
+            <div class="mt-2">
+                <label class="text-sm text-slate-400 text-center edu-text">O usa una foto de prueba:</label>
+                <select id="predefinedSelect" onchange="loadPredefinedImage(this.value)"
+                    class="w-full bg-slate-800 text-slate-300 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors cursor-pointer edu-select mt-2">
+                    <option value="">-- Elige una imagen --</option>
+                    <option value="img/FOTOS BIEN/B dataset.png">Letra B (Opción 1)</option>
+                    <option value="img/FOTOS BIEN/B otro.png">Letra B (Opcion 2)</option>
+                    <option value="img/FOTOS BIEN/C dataset.png">Letra C (Opción 1)</option>
+                    <option value="img/FOTOS BIEN/C otro.png">Letra C (Opcion 2)</option>
+                    <option value="img/FOTOS BIEN/D dataset.png">Letra D (Opción 1)</option>
+                    <option value="img/FOTOS BIEN/D otro.png">Letra D (Opcion 2)</option>
+                    <option value="img/FOTOS BIEN/V dataset.png">Letra V (Opción 1)</option>
+                    <option value="img/FOTOS BIEN/V otro.png">Letra V (Opcion 2)</option>
+                    <option value="img/FOTOS BIEN/M otro.png">Letra M</option>
+                    <option value="img/FOTOS BIEN/F otro.png">Letra F (Fallo)</option>
+                    <option value="img/FOTOS BIEN/A otro.png">Letra A (Fallo)</option>
+
+                </select>
+            </div>
         </div>
+
+
 
         <div class="p-4 md:p-6 flex flex-col justify-between result-box transition-all duration-500 min-h-[300px]">
 

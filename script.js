@@ -228,3 +228,27 @@ updateStatusSuccess = function () {
     const simple = document.getElementById('simpleStatus');
     if (simple) simple.innerText = "¡Listo para usar!";
 }
+
+// NUEVO: Función para cargar imágenes predefinidas desde el desplegable
+window.loadPredefinedImage = function (imagePath) {
+    if (!imagePath) return; // Si vuelve a "-- Elige una imagen --", no hace nada
+
+    // Actualizar la fuente de la imagen con la ruta seleccionada
+    imgEl.src = imagePath;
+
+    // Mostrar la imagen y ocultar el placeholder
+    imgEl.classList.remove('hidden');
+    placeholderEl.classList.add('hidden');
+
+    // Resetear el resultado y la confianza
+    resultEl.innerText = "--";
+    confidenceEl.style.opacity = "0";
+
+    // Habilitar el botón de predicción si el modelo ya está cargado
+    if (model) {
+        predictBtn.disabled = false;
+        predictBtn.classList.replace('bg-slate-600', 'bg-blue-600');
+        predictBtn.classList.replace('text-slate-400', 'text-white');
+        predictBtn.classList.replace('cursor-not-allowed', 'hover:bg-blue-500');
+    }
+}
